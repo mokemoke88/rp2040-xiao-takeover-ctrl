@@ -41,14 +41,16 @@
 | test_toggle_timer_restarts_on_repress | btn(BOTH,1000), btn(LB,2500), btn(BOTH,2600), tick 4599 / 4600 | 4599: S0、4600: SEL_DELAY(計時は押し直しから) | 3.1 の 1 |
 | test_lock_waits_for_both_released_without_warn | トグル後 LOCK で RB だけ残す → 両方押し直し → LB だけ → NONE | 途中はすべて LOCK `1000`(WARN にならない)、NONE で S1 | 3.1 の 3 |
 | test_release_during_sel_delay_finishes_after_sel_flip | btn(BOTH,1000), tick(3000), btn(NONE,3005), tick 3010 / 3011 / 3012 | 3005: SEL_DELAY `0000`、3010: SEL_DELAY、3011: LOCK `1000`、3012: S1 `1000` | 3.1、SEL 反転と同じ時刻には T を抜けない |
-| test_lock_not_left_at_same_ms_as_sel_flip | btn(BOTH,1000), tick(3000), btn(NONE,5500)(この1回で SEL 反転・4 秒以上・解放), tick(5501) | 5500: LOCK `1000`(H:H は出さない)、5501: S2 `1110` | 3.1 安全上の考え方 |
-| test_manual_at_exactly_4000ms | btn(BOTH,1000) … btn(NONE,5000) | S2 `1110` | 3.1 の 4、境界 ≥4000 |
+| test_lock_not_left_at_same_ms_as_sel_flip | btn(BOTH,1000), tick(3000), btn(NONE,5500)(この1回で SEL 反転・4 秒到達・解放), tick(5501) | 5500: LOCK `1000`(H:H は出さない)、5501: S2 `1110` | 3.1 安全上の考え方(呼び出し間隔が粗い場合) |
+| test_manual_hh_not_at_same_ms_as_sel_flip_while_held | btn(BOTH,1000), tick(3000), tick(5500)(SEL 反転と 4 秒到達が同じ tick), tick(5501), btn(NONE,6000) | 5500: LOCK `1000`、5501: LOCK `1110`、解放: S2 `1110` | 3.1 安全上の考え方(押し続けている場合) |
+| test_manual_hh_while_held_at_4000ms | btn(BOTH,1000) … tick 4999 / 5000 → btn(NONE,6000) | 4999(同時押し 3999 ms): LOCK `1000`、5000(4000 ms): LOCK `1110`(解放を待たずに H:H)、解放: S2 `1110` | 3.1 の 3、境界 ≥4000 |
+| test_manual_at_exactly_4000ms_release_event | btn(BOTH,1000) … tick(4999), btn(NONE,5000)(tick なし) | S2 `1110` | 3.1、境界 ≥4000(解放イベントの時刻で到達) |
 | test_no_manual_at_3999ms | btn(BOTH,1000) … btn(NONE,4999) | S1 `1000` | 3.1 の 4 |
-| test_manual_recorded_by_tick_while_held | btn(BOTH,1000) … tick(5000), btn(NONE,7000) | S2 | 3.1 の 4 |
-| test_manual_measured_until_first_release | btn(BOTH,1000) … btn(RB,4000)(LB を 3 秒で解放), btn(NONE,6000)(RB は 5 秒) | S1 | 3.1「最初に離された時点まで」 |
-| test_manual_not_extended_by_repress_in_lock | btn(BOTH,1000) … btn(RB,3500), btn(BOTH,3600), btn(NONE,8000) | S1(LOCK 中の押し直しは計時に含めない) | 3.1 |
+| test_manual_hh_input_locked_until_both_released | H:H になった後、RB だけ残す → 両方押し直し → tick(9000) → LB だけ → NONE | 途中はすべて LOCK `1110`(パルスも WARN もなし)、NONE: S2 `1110` | 3.1 の 3 |
+| test_manual_measured_until_first_release | btn(BOTH,1000) … btn(RB,4000)(LB を 3 秒で解放), tick(6000), btn(NONE,6000)(RB は 5 秒) | 6000: LOCK `1000`(H:H にならない)、解放: S1 `1000` | 3.1「最初に離された時点まで」 |
+| test_manual_not_extended_by_repress_in_lock | btn(BOTH,1000) … btn(RB,3500), btn(BOTH,3600), tick(8000), btn(NONE,8000) | 8000: `1000`、解放: S1(LOCK 中の押し直しで 4 秒判定は再開しない) | 3.1 |
 | test_toggle_s1_to_s0 | S1 から btn(BOTH,t), tick t+2000 / t+2011, btn(NONE) | t+2000: SEL_DELAY `1000`、t+2011: LOCK `0000`、解放: S0 `0000` | 3.1 |
-| test_toggle_s1_to_s0_even_if_held_4000ms | S1 から 5 秒同時押し | S0 `0000`(SEL=L なので 4 秒以上でも S0) | 3.1 の 4 |
+| test_toggle_s1_to_s0_even_if_held_4000ms | S1 から 5 秒同時押し(tick t+4000 / t+5000) | 4 秒・5 秒とも LOCK `0000`(SEL=L 側では何もしない)、解放: S0 `0000` | 3.1 |
 | test_toggle_s2_to_s0_drive_range_before_sel | S2 から btn(BOTH,t), tick t+1999 / t+2000 / t+2010 / t+2011, btn(NONE) | t+1999: S2 `1110`、t+2000: `1000`(D0:D1 が先に L:L)、t+2010: `1000`、t+2011: `0000`(SEL 反転)、解放: S0。パルスは出ない | 3.1 の 2、3.2 |
 | test_s2_toggle_release_during_sel_delay | S2 から btn(BOTH,t), tick(t+2000), btn(NONE,t+2005), tick t+2010 / t+2011 / t+2012 | t+2000: SEL_DELAY `1000`、解放: SEL_DELAY `1000`(パルスなし)、t+2011: LOCK `0000`、t+2012: S0 `0000` | 3.1 |
 | test_toggle_after_pulse_with_carried_priority | S2 から LB → BOTH → LB 解放(パルス、RB が次の優先入力)→ tick(t+301) → btn(BOTH,t+400) → tick t+2399 / t+2400 / t+2411 → btn(NONE) | t+2399: S2、t+2400: SEL_DELAY `1000`、t+2411: LOCK `0000`、解放: S0 | 3.1、3.2(P 後に他方を押して同時押し) |
@@ -86,7 +88,7 @@
 
 | テスト | 入力 | 期待値 | 仕様 |
 |---|---|---|---|
-| test_wraparound_toggle_and_manual | t0 = 0xFFFFFFFF − 999 で btn(BOTH), tick t0+1999 / +2000 / +2010 / +2011(0 をまたぐ), btn(NONE,t0+4000) | S0 → SEL_DELAY → SEL_DELAY → LOCK → S2 `1110` | 差分比較 |
+| test_wraparound_toggle_and_manual | t0 = 0xFFFFFFFF − 999 で btn(BOTH), tick t0+1999 / +2000 / +2010 / +2011 / +3999 / +4000(0 をまたぐ), btn(NONE,t0+4000) | S0 → SEL_DELAY → SEL_DELAY → LOCK → `1000` → `1110` → S2 `1110` | 差分比較 |
 | test_wraparound_pulse | t = 0xFFFFFFFF − 49 の S2 で RB パルス(t+10 開始)、tick t+210 / t+211 | P → S2 | 差分比較 |
 
 ## 乱択による安全不変条件(test_random_safety_invariants)
@@ -107,12 +109,14 @@
 | 押下状態の一致 | ロジックが持つ押下状態 = 入力、無視中のボタン ⊆ 押されているボタン |
 | SEL=L ならドライブレンジ | SEL = L の間は D0:D1 = L:L |
 | SEL 変化の前後 | SEL が変わった呼び出しでは、直前と直後の出力がともに D0:D1 = L:L で、L:L になってからの経過が T_SEL_DELAY を超えている |
+| H:H 変化と SEL 変化の分離 | D0:D1 が H:H になった呼び出しでは SEL が変わっておらず、その時刻は最後に SEL が変わった呼び出しの時刻と異なる |
+| LOCK 中の H:H | LOCK 中に H:H を出しているのは、SEL = H で、トグルを起こした同時押しが途切れずに T_MANUAL 以上続いたときだけ |
 | トグルの条件 | SEL_DELAY に入った呼び出しの直前の入力は両方押しで、両方押しになってから T_TOGGLE 以上経過しており、直前に無視中のボタンがない |
 | パルスの開始 | パルスが始まるのは btn 呼び出しの中だけで、その呼び出しでパルスのボタンが押下 → 解放に変わっている |
 | パルスの条件 | P の間は SEL = H かつ D0 ≠ D1。P が終わる(または次のパルスに替わる)ときは、開始から T_PULSE を超えている |
 | WARN の解除 | WARN が消えるのは btn 呼び出しの中だけで、その呼び出しで新たに押されたボタンがある |
 | WARN のラッチ | WARN が点くのは、呼び出しの前か後の状態が P のとき(P 中の変化、P の終了時、P 開始と同時の押下)だけ |
-| 網羅の確認 | SEL の変化 100 回以上、パルス 100 回以上、LOCK → S2 10 回以上、WARN のラッチ・解除 各 10 回以上、起動時押下あり 100 区間以上、WARN 付き起動 50 区間以上 |
+| 網羅の確認 | SEL の変化 100 回以上、パルス 100 回以上、LOCK → S2 10 回以上、LOCK 中の H:H 10 回以上、WARN のラッチ・解除 各 10 回以上、起動時押下あり 100 区間以上、WARN 付き起動 50 区間以上 |
 
 ## 仕様 3.6 で決めた処理順(同時に届いた2ビットの変化)
 

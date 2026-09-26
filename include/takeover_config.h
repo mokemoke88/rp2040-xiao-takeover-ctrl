@@ -52,7 +52,10 @@
 
 /** @brief T_TOGGLE: 同時押しをこの時間続けたらトグルする。 */
 #define TAKEOVER_T_TOGGLE_MS 2000u
-/** @brief T_MANUAL: 同時押し開始から最初の解放までがこの時間以上なら、乗っ取り後にマニュアル待機へ移る。 */
+/**
+ * @brief T_MANUAL: 乗っ取り側へのトグルで、同時押しを途切れずにこの時間続けたら(同時押し開始から、経過 >= この値)、
+ * 解放を待たずに D0:D1 = H:H(マニュアル待機)にする。
+ */
 #define TAKEOVER_T_MANUAL_MS 4000u
 /**
  * @brief T_PULSE: 単押しパルス(D0:D1 = L:H / H:L)の長さの下限。

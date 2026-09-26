@@ -223,7 +223,7 @@ void test_release_during_sel_delay_finishes_after_sel_flip(void) {
 }
 
 void test_lock_not_left_at_same_ms_as_sel_flip(void) {
-  /* 呼び出しの間隔が空き、SEL 反転と解放が同じ時刻に処理される場合でも、S2(H:H)へは次の時刻まで移らない */
+  /* 呼び出しの間隔が空き、SEL 反転・4 秒到達・解放が同じ呼び出しで処理される場合でも、H:H は次の時刻まで出さない */
   btn(BOTH, 1000);
   tick(3000);
   btn(NONE, 5500); /* この呼び出しの中で SEL 反転(同時押しは 4 秒以上)と解放が起きる */
@@ -234,7 +234,38 @@ void test_lock_not_left_at_same_ms_as_sel_flip(void) {
   ASSERT_OUT(1, 1, 1, 0);
 }
 
-void test_manual_at_exactly_4000ms(void) {
+void test_manual_hh_not_at_same_ms_as_sel_flip_while_held(void) {
+  /* 呼び出しの間隔が空き、SEL 反転と 4 秒到達が同じ tick で処理される(押し続けている)場合 */
+  btn(BOTH, 1000);
+  tick(3000);
+  tick(5500); /* SEL 反転。4 秒は過ぎているが H:H は出さない */
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(1, 0, 0, 0);
+  tick(5501); /* 次の時刻で H:H */
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(1, 1, 1, 0);
+  btn(NONE, 6000);
+  ASSERT_STATE(TAKEOVER_STATE_S2);
+  ASSERT_OUT(1, 1, 1, 0);
+}
+
+void test_manual_hh_while_held_at_4000ms(void) {
+  btn(BOTH, 1000);
+  tick(3000);
+  tick(3011);
+  tick(4999); /* 同時押し 3999 ms: まだ L:L */
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(1, 0, 0, 0);
+  tick(5000); /* 4000 ms: 解放を待たずに H:H。LOCK のまま */
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(1, 1, 1, 0);
+  btn(NONE, 6000); /* 両解放で S2。出力は H:H のまま */
+  ASSERT_STATE(TAKEOVER_STATE_S2);
+  ASSERT_OUT(1, 1, 1, 0);
+}
+
+void test_manual_at_exactly_4000ms_release_event(void) {
+  /* tick を挟まず、4000 ms ちょうどの解放イベントで到達が判定される場合 */
   btn(BOTH, 1000);
   tick(3000);
   tick(3011);
@@ -253,13 +284,25 @@ void test_no_manual_at_3999ms(void) {
   ASSERT_OUT(1, 0, 0, 0);
 }
 
-void test_manual_recorded_by_tick_while_held(void) {
+void test_manual_hh_input_locked_until_both_released(void) {
   btn(BOTH, 1000);
   tick(3000);
   tick(3011);
   tick(5000);
-  btn(NONE, 7000);
+  ASSERT_OUT(1, 1, 1, 0);
+  btn(RB, 5500); /* 片方を離しても LOCK のまま。パルスも WARN もない */
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(1, 1, 1, 0);
+  btn(BOTH, 5600); /* 押し直しても何も起きない */
+  tick(9000);
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(1, 1, 1, 0);
+  btn(LB, 9100);
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(1, 1, 1, 0);
+  btn(NONE, 9200);
   ASSERT_STATE(TAKEOVER_STATE_S2);
+  ASSERT_OUT(1, 1, 1, 0);
 }
 
 void test_manual_measured_until_first_release(void) {
@@ -267,9 +310,11 @@ void test_manual_measured_until_first_release(void) {
   tick(3000);
   tick(3011);
   btn(RB, 4000); /* LB を 3000ms で離す */
-  tick(6000);
+  tick(6000);    /* RB は押し続けているが H:H にはならない */
+  ASSERT_OUT(1, 0, 0, 0);
   btn(NONE, 6000); /* RB は 5000ms 押していた */
   ASSERT_STATE(TAKEOVER_STATE_S1);
+  ASSERT_OUT(1, 0, 0, 0);
 }
 
 void test_manual_not_extended_by_repress_in_lock(void) {
@@ -277,10 +322,12 @@ void test_manual_not_extended_by_repress_in_lock(void) {
   tick(3000);
   tick(3011);
   btn(RB, 3500);
-  btn(BOTH, 3600);
+  btn(BOTH, 3600); /* 押し直しても 4 秒判定は再開しない */
   tick(8000);
+  ASSERT_OUT(1, 0, 0, 0);
   btn(NONE, 8000);
   ASSERT_STATE(TAKEOVER_STATE_S1);
+  ASSERT_OUT(1, 0, 0, 0);
 }
 
 void test_toggle_s1_to_s0(void) {
@@ -302,7 +349,11 @@ void test_toggle_s1_to_s0_even_if_held_4000ms(void) {
   btn(BOTH, t);
   tick(t + 2000u);
   tick(t + 2011u);
+  tick(t + 4000u); /* SEL = L 側へのトグルでは 4 秒でも何もしない */
+  ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  ASSERT_OUT(0, 0, 0, 0);
   tick(t + 5000u);
+  ASSERT_OUT(0, 0, 0, 0);
   btn(NONE, t + 5000u);
   ASSERT_STATE(TAKEOVER_STATE_S0);
   ASSERT_OUT(0, 0, 0, 0);
@@ -648,6 +699,10 @@ void test_wraparound_toggle_and_manual(void) {
   ASSERT_STATE(TAKEOVER_STATE_SEL_DELAY);
   tick((uint32_t)(t0 + 2011u));
   ASSERT_STATE(TAKEOVER_STATE_LOCK);
+  tick((uint32_t)(t0 + 3999u));
+  ASSERT_OUT(1, 0, 0, 0);
+  tick((uint32_t)(t0 + 4000u));
+  ASSERT_OUT(1, 1, 1, 0);
   btn(NONE, (uint32_t)(t0 + 4000u));
   ASSERT_STATE(TAKEOVER_STATE_S2);
   ASSERT_OUT(1, 1, 1, 0);
@@ -688,7 +743,7 @@ void test_random_safety_invariants(void) {
   rng_state = 20260926u;
   uint32_t now = UINT32_MAX - 50000000u; /* 途中で時刻が 0 に戻るようにする */
   unsigned sel_changes = 0, pulses = 0, manual_entries = 0, warn_latches = 0, warn_clears = 0, boot_pressed = 0,
-           boot_warn = 0;
+           boot_warn = 0, lock_manual_outputs = 0;
 
   /* 起動からやり直す区間を繰り返す。起動時の押下状態と WARN の初期値も乱択にする */
   for (uint32_t episode = 0; episode < 600u; episode++) {
@@ -706,9 +761,13 @@ void test_random_safety_invariants(void) {
     TEST_ASSERT_EQUAL_UINT8(bits, ctx.ignored);
     TEST_ASSERT_EQUAL_INT(warn_at_boot, takeover_get_outputs(&ctx).warn);
 
-    uint32_t both_since = now;  /* 入力が両方押しになった時刻 */
-    uint32_t range_since = now; /* D0:D1 = L:L が続いている開始時刻 */
-    uint32_t pulse_start = 0;   /* 今のパルスの開始時刻 */
+    uint32_t both_since = now;      /* 入力が両方押しになった時刻 */
+    uint32_t toggle_both_start = 0; /* トグルを起こした同時押しの開始時刻 */
+    uint32_t toggle_both_end = 0;   /* その同時押しが最初に途切れた時刻 */
+    bool toggle_both_ended = false;
+    uint32_t sel_changed_at = now - 1u; /* 最後に SEL が変わった呼び出しの時刻 */
+    uint32_t range_since = now;         /* D0:D1 = L:L が続いている開始時刻 */
+    uint32_t pulse_start = 0;           /* 今のパルスの開始時刻 */
     takeover_outputs_t prev = takeover_get_outputs(&ctx);
     takeover_state_t prev_state = takeover_get_state(&ctx);
 
@@ -741,7 +800,15 @@ void test_random_safety_invariants(void) {
         TEST_ASSERT_TRUE(is_drive_range(prev));
         TEST_ASSERT_TRUE(is_drive_range(out));
         TEST_ASSERT_TRUE((uint32_t)(now - range_since) > TAKEOVER_T_SEL_DELAY_MS);
+        sel_changed_at = now;
         sel_changes++;
+      }
+
+      /* D0:D1 が H:H になるのは、SEL が変わった呼び出しとは別の時刻 */
+      const bool hh = out.d0 && out.d1;
+      if (hh && !(prev.d0 && prev.d1)) {
+        TEST_ASSERT_TRUE(out.sel == prev.sel);
+        TEST_ASSERT_TRUE(now != sel_changed_at);
       }
       if (is_drive_range(out) && !is_drive_range(prev)) range_since = now;
 
@@ -750,6 +817,21 @@ void test_random_safety_invariants(void) {
         TEST_ASSERT_EQUAL_UINT8(BOTH, prev_bits);
         TEST_ASSERT_TRUE((uint32_t)(now - both_since) >= TAKEOVER_T_TOGGLE_MS);
         TEST_ASSERT_EQUAL_UINT8(0, prev_ignored);
+        toggle_both_start = both_since;
+        toggle_both_ended = false;
+      }
+      /* トグルを起こした同時押しが最初に途切れた時刻を記録する */
+      if (!toggle_both_ended && bits != BOTH) {
+        toggle_both_end = now;
+        toggle_both_ended = true;
+      }
+
+      /* LOCK 中の H:H は、SEL = H で、トグルを起こした同時押しが途切れずに T_MANUAL 以上続いたときだけ */
+      if (state == TAKEOVER_STATE_LOCK && hh) {
+        const uint32_t held = (toggle_both_ended ? toggle_both_end : now) - toggle_both_start;
+        TEST_ASSERT_TRUE(out.sel);
+        TEST_ASSERT_TRUE(held >= TAKEOVER_T_MANUAL_MS);
+        lock_manual_outputs++;
       }
 
       /* パルスは、そのボタンの解放を処理した btn 呼び出しの中でだけ始まる */
@@ -797,6 +879,7 @@ void test_random_safety_invariants(void) {
   TEST_ASSERT_TRUE(sel_changes >= 100u);
   TEST_ASSERT_TRUE(pulses >= 100u);
   TEST_ASSERT_TRUE(manual_entries >= 10u);
+  TEST_ASSERT_TRUE(lock_manual_outputs >= 10u);
   TEST_ASSERT_TRUE(warn_latches >= 10u);
   TEST_ASSERT_TRUE(warn_clears >= 10u);
   TEST_ASSERT_TRUE(boot_pressed >= 100u);
@@ -818,9 +901,11 @@ int main(void) {
   RUN_TEST(test_lock_waits_for_both_released_without_warn);
   RUN_TEST(test_release_during_sel_delay_finishes_after_sel_flip);
   RUN_TEST(test_lock_not_left_at_same_ms_as_sel_flip);
-  RUN_TEST(test_manual_at_exactly_4000ms);
+  RUN_TEST(test_manual_hh_not_at_same_ms_as_sel_flip_while_held);
+  RUN_TEST(test_manual_hh_while_held_at_4000ms);
+  RUN_TEST(test_manual_at_exactly_4000ms_release_event);
   RUN_TEST(test_no_manual_at_3999ms);
-  RUN_TEST(test_manual_recorded_by_tick_while_held);
+  RUN_TEST(test_manual_hh_input_locked_until_both_released);
   RUN_TEST(test_manual_measured_until_first_release);
   RUN_TEST(test_manual_not_extended_by_repress_in_lock);
   RUN_TEST(test_toggle_s1_to_s0);

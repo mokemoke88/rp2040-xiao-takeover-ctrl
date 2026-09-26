@@ -33,7 +33,7 @@ typedef enum {
   TAKEOVER_STATE_S2,    /**< マニュアル待機。SEL=H、D0:D1=H:H */
   TAKEOVER_STATE_PULSE, /**< P: パルス出力中。SEL=H、D0:D1=L:H(LB)または H:L(RB) */
   TAKEOVER_STATE_SEL_DELAY, /**< トグル中: D0:D1 を L:L にした後、SEL 反転まで T_SEL_DELAY 待っている。入力はロック */
-  TAKEOVER_STATE_LOCK /**< T: トグル後ロック。SEL は反転済み、D0:D1=L:L。両入力が離されるまで入力を受け付けない。SEL を反転した時刻と同じ時刻には抜けない */
+  TAKEOVER_STATE_LOCK /**< T: トグル後ロック。SEL は反転済み。D0:D1=L:L(SEL=H で同時押しが T_MANUAL に達した後は H:H)。両入力が離されるまで入力を受け付けない。SEL を反転した時刻と同じ時刻には D0:D1 を変えず、抜けもしない */
 } takeover_state_t;
 
 /** @brief ピンへ出す値。true = H。warn だけは論理値(true = 警告ラッチ中)で、LED の極性は含まない。 */
@@ -60,7 +60,8 @@ typedef struct {
   uint8_t priority;         /**< S2 の優先入力(TAKEOVER_BUTTON_* のどれか。無ければ 0) */
   uint8_t pulse_button;     /**< P で出しているパルスのボタン */
   bool both_active;         /**< 同時押しを計時中 */
-  bool manual_reached;      /**< 同時押しが T_MANUAL 以上続いた */
+  bool manual_reached;      /**< 同時押しが途切れずに T_MANUAL 以上続いた */
+  bool lock_manual_output;  /**< LOCK 中に D0:D1 = H:H(マニュアル待機の表示)を出している */
   uint32_t both_start_ms;   /**< 同時押し開始の時刻 */
   uint32_t timer_start_ms;  /**< P / SEL_DELAY / LOCK に入った時刻 */
   bool initial_received; /**< 起動時のボタン状態(初期化後の最初の takeover_on_buttons())を受け取った */

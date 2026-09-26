@@ -93,17 +93,30 @@ static void start_pulse(takeover_ctx_t *ctx, uint8_t button, uint32_t now_ms) {
 }
 
 /**
+ * @brief SEL を反転した時刻より後かどうか(LOCK に入った時刻 timer_start_ms からの経過が 0 でない)。
+ *
+ * メインループは1周の中で同じ時刻を使い、出力は1周に1回まとめて行う。SEL を反転したのと同じ時刻に
+ * D0:D1 を H:H にすると(LOCK 中のマニュアル表示、S2 への移行のどちらでも)、SEL の変化と D0:D1 の変化が
+ * 1回の出力書き込みで同時に出てしまう。D0:D1 を変える遷移はこの関数が true のときだけ行うことで、
+ * 2つの変化を別の出力書き込みに分ける(docs/spec.md 3.1)。
+ * @param ctx コンテキスト(state == LOCK であること)
+ * @param now_ms 現在時刻
+ * @return SEL 反転より後の時刻なら true
+ */
+static bool after_sel_flip(const takeover_ctx_t *ctx, uint32_t now_ms) {
+  return elapsed_ms(now_ms, ctx->timer_start_ms) != 0;
+}
+
+/**
  * @brief T(LOCK)で両入力が離されていれば、SEL と同時押しの長さに応じた状態へ移る(docs/spec.md 3.1 の 4)。
  *
- * SEL を反転したのと同じ時刻には LOCK を抜けない。メインループは1周の中で同じ時刻を使い、出力は1周に1回
- * まとめて行うので、同じ時刻に S2 へ移ると SEL の変化と D0:D1 = H:H が1回の出力で同時に出てしまう。
- * 1 ms 以上後に抜けることで、SEL が変わる出力の時点では D0:D1 = L:L が保証される。
+ * SEL を反転したのと同じ時刻には LOCK を抜けない(after_sel_flip() を参照)。
  * @param ctx コンテキスト
  * @param now_ms 現在時刻
  */
 static void finish_lock_if_released(takeover_ctx_t *ctx, uint32_t now_ms) {
   if (ctx->state != TAKEOVER_STATE_LOCK || ctx->pressed != 0) return;
-  if (elapsed_ms(now_ms, ctx->timer_start_ms) == 0) return;
+  if (!after_sel_flip(ctx, now_ms)) return;
 
   if (!ctx->sel) {
     ctx->state = TAKEOVER_STATE_S0;
@@ -114,6 +127,7 @@ static void finish_lock_if_released(takeover_ctx_t *ctx, uint32_t now_ms) {
   }
   ctx->both_active = false;
   ctx->manual_reached = false;
+  ctx->lock_manual_output = false;
   ctx->priority = 0;
   ctx->ignored = 0;
 }
@@ -151,10 +165,17 @@ static void advance(takeover_ctx_t *ctx, uint32_t now_ms) {
     ctx->timer_start_ms = now_ms;
   }
 
-  /* 両方押されたまま T_MANUAL に達したことを記録する。解放時の計算だけに頼らず、ここでも記録しておく */
+  /* 同時押し開始から途切れずに T_MANUAL に達したことを記録する(経過 >= T_MANUAL)。
+     SEL_DELAY も対象にしているのは、呼び出し間隔が空いてトグル開始と 4 秒到達が同じ呼び出しで処理される場合のため */
   if ((ctx->state == TAKEOVER_STATE_SEL_DELAY || ctx->state == TAKEOVER_STATE_LOCK) && ctx->both_active &&
       elapsed_ms(now_ms, ctx->both_start_ms) >= TAKEOVER_T_MANUAL_MS) {
     ctx->manual_reached = true;
+  }
+
+  /* LOCK 中、SEL = H で T_MANUAL に達していれば、解放を待たずに D0:D1 = H:H にする(docs/spec.md 3.1 の 3)。
+     SEL を反転した時刻と同じ時刻には行わない(after_sel_flip() を参照)。SEL = L 側へのトグルでは何もしない */
+  if (ctx->state == TAKEOVER_STATE_LOCK && ctx->sel && ctx->manual_reached && after_sel_flip(ctx, now_ms)) {
+    ctx->lock_manual_output = true;
   }
 
   finish_lock_if_released(ctx, now_ms);
@@ -218,7 +239,7 @@ static void handle_release(takeover_ctx_t *ctx, uint8_t button, uint32_t now_ms)
 
   case TAKEOVER_STATE_SEL_DELAY:
   case TAKEOVER_STATE_LOCK:
-    /* 同時押しの長さは、どちらかが最初に離された時点までで測る(3.1) */
+    /* 同時押しの長さは、どちらかが最初に離された時点までで測る(3.1)。一度離されると、押し直しても再開しない */
     if (ctx->both_active) {
       if (elapsed_ms(now_ms, ctx->both_start_ms) >= TAKEOVER_T_MANUAL_MS) ctx->manual_reached = true;
       ctx->both_active = false;
@@ -248,6 +269,7 @@ void takeover_init(takeover_ctx_t *ctx, bool warn_latched) {
   ctx->pulse_button = 0;
   ctx->both_active = false;
   ctx->manual_reached = false;
+  ctx->lock_manual_output = false;
   ctx->both_start_ms = 0;
   ctx->timer_start_ms = 0;
   ctx->initial_received = false;
@@ -299,10 +321,14 @@ takeover_outputs_t takeover_get_outputs(const takeover_ctx_t *ctx) {
     out.d0 = (ctx->pulse_button == TAKEOVER_BUTTON_RB);
     out.d1 = (ctx->pulse_button == TAKEOVER_BUTTON_LB);
     break;
+  case TAKEOVER_STATE_LOCK:
+    /* T_MANUAL に達した後はマニュアル待機の表示(H:H)。それまでは L:L */
+    out.d0 = ctx->lock_manual_output;
+    out.d1 = ctx->lock_manual_output;
+    break;
   case TAKEOVER_STATE_S0:
   case TAKEOVER_STATE_S1:
   case TAKEOVER_STATE_SEL_DELAY:
-  case TAKEOVER_STATE_LOCK:
     break;
   }
   return out;
