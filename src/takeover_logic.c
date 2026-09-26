@@ -166,7 +166,10 @@ static void advance(takeover_ctx_t *ctx, uint32_t now_ms) {
   }
 
   /* 同時押し開始から途切れずに T_MANUAL に達したことを記録する(経過 >= T_MANUAL)。
-     SEL_DELAY も対象にしているのは、呼び出し間隔が空いてトグル開始と 4 秒到達が同じ呼び出しで処理される場合のため */
+     manual_reached を true にする判定の正はここ。takeover_on_buttons() はイベントを処理する前に必ずこの関数を
+     呼ぶので、解放イベントの時刻に到達した場合もここで先に記録される(handle_release() の同じ判定は防御的な重ね)。
+     SEL_DELAY も対象にしているのは、呼び出し間隔が空いてトグル開始と T_MANUAL 到達が同じ呼び出しで処理される場合のため
+     (その場合も H:H を出すのは SEL 反転より後の時刻。下の after_sel_flip() を参照) */
   if ((ctx->state == TAKEOVER_STATE_SEL_DELAY || ctx->state == TAKEOVER_STATE_LOCK) && ctx->both_active &&
       elapsed_ms(now_ms, ctx->both_start_ms) >= TAKEOVER_T_MANUAL_MS) {
     ctx->manual_reached = true;
@@ -241,6 +244,8 @@ static void handle_release(takeover_ctx_t *ctx, uint8_t button, uint32_t now_ms)
   case TAKEOVER_STATE_LOCK:
     /* 同時押しの長さは、どちらかが最初に離された時点までで測る(3.1)。一度離されると、押し直しても再開しない */
     if (ctx->both_active) {
+      /* 防御的な重ね: この時刻での到達は、直前の advance() で既に記録されている(同じ時刻・同じ条件の判定なので
+         結果は変わらない)。advance() を先に呼ぶ順序が将来崩れても、最初の解放時点での到達を取りこぼさないために残す */
       if (elapsed_ms(now_ms, ctx->both_start_ms) >= TAKEOVER_T_MANUAL_MS) ctx->manual_reached = true;
       ctx->both_active = false;
     }

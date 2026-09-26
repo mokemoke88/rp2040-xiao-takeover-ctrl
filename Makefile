@@ -22,10 +22,16 @@ EXE =
 endif
 
 FORMAT_FILES = $(wildcard include/*.h src/*.c tests/*.c)
-# 同着時の優先を LB(既定)と RB の両方でテストする
+# 同じテストを 3 つの構成でビルドして実行する
+#   TEST_LB : 仕様どおりの定数、同着時 LB 優先(既定)
+#   TEST_RB : 同着時 RB 優先
+#   TEST_ALT: タイミング定数を仕様値と違う値にした構成。テストの時刻が定数から計算されていて、
+#             定数を変えても追従することを確かめる(値は takeover_config.h の前提を満たす範囲で選んでいる)
+ALT_TIMING = -DTAKEOVER_T_TOGGLE_MS=700u -DTAKEOVER_T_MANUAL_MS=1500u -DTAKEOVER_T_PULSE_MS=50u -DTAKEOVER_T_SEL_DELAY_MS=3u
 TEST_LB = $(HOST_BUILD)/test_takeover_logic$(EXE)
 TEST_RB = $(HOST_BUILD)/test_takeover_logic_rb$(EXE)
-TESTS = $(TEST_LB) $(TEST_RB)
+TEST_ALT = $(HOST_BUILD)/test_takeover_logic_alt$(EXE)
+TESTS = $(TEST_LB) $(TEST_RB) $(TEST_ALT)
 TEST_DEPS = tests/test_takeover_logic.c src/takeover_logic.c $(UNITY_DIR)/unity.c include/takeover_logic.h include/takeover_config.h
 TEST_SRCS = tests/test_takeover_logic.c src/takeover_logic.c $(UNITY_DIR)/unity.c
 
@@ -36,6 +42,7 @@ all: test
 test: $(TESTS)
 	./$(TEST_LB)
 	./$(TEST_RB)
+	./$(TEST_ALT)
 
 # takeover_logic.c だけをホストでビルドする(Pico SDK に依存しないため)
 $(TEST_LB): $(TEST_DEPS) | $(HOST_BUILD)
@@ -43,6 +50,9 @@ $(TEST_LB): $(TEST_DEPS) | $(HOST_BUILD)
 
 $(TEST_RB): $(TEST_DEPS) | $(HOST_BUILD)
 	$(CC) $(CFLAGS) -DTAKEOVER_TIE_PREFER_LB=0 -o $@ $(TEST_SRCS)
+
+$(TEST_ALT): $(TEST_DEPS) | $(HOST_BUILD)
+	$(CC) $(CFLAGS) $(ALT_TIMING) -o $@ $(TEST_SRCS)
 
 $(HOST_BUILD):
 	mkdir -p $@

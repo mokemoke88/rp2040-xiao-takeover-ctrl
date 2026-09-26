@@ -48,15 +48,23 @@
 /* タイミング定数(docs/spec.md 5 章)。単位はすべてミリ秒。                */
 /* T_TOGGLE / T_MANUAL は「経過 >= 定数」、T_PULSE / T_SEL_DELAY は         */
 /* 「経過 > 定数」で判定する(docs/spec.md 5 章)。                            */
+/* #ifndef で囲んでいるのは、ホストのテストで仕様値と異なる値(-D で指定)でも  */
+/* 検査するため(Makefile の ALT_TIMING)。テストの時刻はこれらの定数から計算    */
+/* しているので、値を調整してもテストは追従する。ファームウェアではここに書いた */
+/* 値が使われる。定数の間の前提は下の TAKEOVER_STATIC_CHECK で検査する。       */
 /* ------------------------------------------------------------------------- */
 
 /** @brief T_TOGGLE: 同時押しをこの時間続けたらトグルする。 */
+#ifndef TAKEOVER_T_TOGGLE_MS
 #define TAKEOVER_T_TOGGLE_MS 2000u
+#endif
 /**
  * @brief T_MANUAL: 乗っ取り側へのトグルで、同時押しを途切れずにこの時間続けたら(同時押し開始から、経過 >= この値)、
  * 解放を待たずに D0:D1 = H:H(マニュアル待機)にする。
  */
+#ifndef TAKEOVER_T_MANUAL_MS
 #define TAKEOVER_T_MANUAL_MS 4000u
+#endif
 /**
  * @brief T_PULSE: 単押しパルス(D0:D1 = L:H / H:L)の長さの下限。
  *
@@ -64,13 +72,39 @@
  * この値 + 1 ms + メインループ1周分より短い。実際のピンの変化の間隔は、2つの周でサンプリングから出力までに
  * かかった処理時間の差(µs 程度)だけずれうる。
  */
+#ifndef TAKEOVER_T_PULSE_MS
 #define TAKEOVER_T_PULSE_MS 200u
+#endif
 /**
  * @brief T_SEL_DELAY: トグル時に D0:D1 を L:L にしてから SEL を反転するまでの待ち時間の下限(暫定値)。
  *
  * サンプリング時刻の差についての保証と、ピンの変化の間隔のずれは T_PULSE と同じ。
  */
+#ifndef TAKEOVER_T_SEL_DELAY_MS
 #define TAKEOVER_T_SEL_DELAY_MS 10u
+#endif
+
+/**
+ * @brief コンパイル時に条件を検査する。条件が偽なら配列の大きさが -1 になり、コンパイルエラーになる。
+ *
+ * C11 の _Static_assert はホストのテスト(-std=c99)で使えないので、C99 でも使えるこの方法にしている。
+ * エラーメッセージには name(typedef の名前)が出るので、名前で何を検査しているかが分かるようにする。
+ */
+#define TAKEOVER_STATIC_CHECK(cond, name) typedef char name[(cond) ? 1 : -1]
+
+/* タイミング定数の前提(docs/spec.md 5 章) */
+/** @brief T_SEL_DELAY は 1 ms 以上(D0:D1 を L:L にしてから SEL を反転するまでに待つ時間が必要) */
+TAKEOVER_STATIC_CHECK(TAKEOVER_T_SEL_DELAY_MS >= 1u, takeover_check_sel_delay_positive);
+/** @brief T_PULSE は 1 ms 以上 */
+TAKEOVER_STATIC_CHECK(TAKEOVER_T_PULSE_MS >= 1u, takeover_check_pulse_positive);
+/** @brief T_TOGGLE は 1 ms 以上 */
+TAKEOVER_STATIC_CHECK(TAKEOVER_T_TOGGLE_MS >= 1u, takeover_check_toggle_positive);
+/**
+ * @brief T_MANUAL は T_TOGGLE + T_SEL_DELAY より長い。マニュアル待機の表示(H:H)は、トグルで SEL を反転した後に
+ * 出るものなので(docs/spec.md 3.1)、4 秒の到達が SEL 反転より前に来る設定は想定しない。
+ */
+TAKEOVER_STATIC_CHECK(TAKEOVER_T_MANUAL_MS > TAKEOVER_T_TOGGLE_MS + TAKEOVER_T_SEL_DELAY_MS,
+                      takeover_check_manual_after_toggle);
 
 /* ------------------------------------------------------------------------- */
 /* 同着時の優先(docs/spec.md 3.5)                                          */

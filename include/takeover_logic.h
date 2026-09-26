@@ -98,7 +98,10 @@ void takeover_init(takeover_ctx_t *ctx, bool warn_latched);
 void takeover_on_buttons(takeover_ctx_t *ctx, uint8_t pressed_bits, uint32_t now_ms);
 
 /**
- * @brief 時間経過による遷移(トグル開始、SEL 反転、パルス終了など)を処理する。
+ * @brief 時間経過による遷移(トグル開始、SEL 反転、パルス終了、LOCK 中の D0:D1 = H:H など)を処理する。
+ *
+ * LOCK 中に SEL = H で、同時押しが途切れずに T_MANUAL に達していれば、両入力の解放を待たずに D0:D1 = H:H
+ * (マニュアル待機の表示)にするのもこの関数(docs/spec.md 3.1 の 3)。ただし SEL を反転したのと同じ時刻には行わない。
  *
  * メインループの毎周で呼ぶ。呼ぶ間隔が空くと、その分だけ遷移が遅れる。
  * @param ctx コンテキスト

@@ -37,7 +37,7 @@ XIAO RP2040 用のファームウェア。2つのタクトスイッチ(LB / RB)�
 |---|---|
 | `make format` | clang-format で整形 |
 | `make lint` | 整形済みか検査(差分があれば失敗) |
-| `make test` | 状態遷移ロジック(`src/takeover_logic.c`)をホストの gcc でビルドし、Unity のテストを実行。同着時 LB 優先(既定)と RB 優先(`-DTAKEOVER_TIE_PREFER_LB=0`)の2通りでビルドして両方実行する。成果物は `build-host/` |
+| `make test` | 状態遷移ロジック(`src/takeover_logic.c`)をホストの gcc でビルドし、Unity のテストを実行。次の 3 構成でビルドしてすべて実行する: 仕様どおり(同着時 LB 優先)、RB 優先(`-DTAKEOVER_TIE_PREFER_LB=0`)、タイミング定数を仕様値と違う値にした構成(`ALT_TIMING`)。テストの時刻は `takeover_config.h` の定数から計算しているので、定数を調整してもテストを書き直す必要はない。成果物は `build-host/` |
 | `make firmware` | `cmake -S . -B build -G Ninja -DPICO_BOARD=seeed_xiao_rp2040` + `cmake --build build`。`build/xiao_takeover_ctrl.uf2` ができる |
 | `make firmware BUILD_DIR=build-nowdt CMAKE_ARGS=-DTAKEOVER_ENABLE_WATCHDOG=OFF` | ウォッチドッグ無効版を別ディレクトリにビルド |
 | `python tools/verification/verify_debounce_pio.py build/debounce.pio.h` | `make firmware` で生成された PIO の命令語を模擬実行し、チャタリング除去の時間、ノイズ除去、起動時の最初の push を検算。期待値は生成ヘッダの `debounce_CLOCK_HZ` / `debounce_REREAD_DELAY` から計算する |
@@ -50,7 +50,7 @@ XIAO RP2040 用のファームウェア。2つのタクトスイッチ(LB / RB)�
 |---|---|---|
 | `TAKEOVER_ENABLE_WATCHDOG` | ON | ウォッチドッグ(タイムアウト 100 ms、デバッガ停止中は一時停止)を有効にする。無効にすると panic 後は停止したままになる |
 
-ピン番号・タイミング定数・同着時の優先は `include/takeover_config.h`、チャタリング除去の時間は `src/debounce.pio` の冒頭コメントと定数で決まる。
+ピン番号・タイミング定数・同着時の優先は `include/takeover_config.h`、チャタリング除去の時間は `src/debounce.pio` の冒頭コメントと定数で決まる。タイミング定数の間の前提(例: `T_MANUAL > T_TOGGLE + T_SEL_DELAY`)は `takeover_config.h` でコンパイル時に検査しているので、前提に反する値にするとビルドが失敗する。
 
 ### 書き込み
 
@@ -60,8 +60,12 @@ XIAO RP2040 用のファームウェア。2つのタクトスイッチ(LB / RB)�
 
 picotool を使う場合は、BOOTSEL 状態で `picotool load -x build/xiao_takeover_ctrl.uf2` でもよい。
 
-### 実機で確認すること(未実施)
+### 実機で確認すること
 
+確認済みと書いているのは、ユーザーから報告があった範囲だけ。ほかの項目は実施状況を記録していない。
+
+- 乗っ取り側へのトグルで両押しを続け、同時押し開始から 4 秒に達した時点で、解放を待たずに D0:D1 が H:H になること(その後、両方離すと S2)
+  - 確認済み(2026-09-26、ユーザー報告: 正常系が想定どおり)
 - 仕様の各操作で SEL / D0 / D1 が期待どおりか(テスター / ロジックアナライザ)
 - パルス幅が 200 ms を超えること(〜約 201 ms)、D0:D1 → SEL の遅延が 10 ms を超えること(`T_SEL_DELAY` は暫定値)
 - チャタリング除去の効き(除去時間は計算上 約 21〜22 ms)
