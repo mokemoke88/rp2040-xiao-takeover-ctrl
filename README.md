@@ -19,7 +19,7 @@ XIAO RP2040 用のファームウェア。2つのタクトスイッチ(LB / RB)�
 - ツールチェーンの入手先とボード固有の注意点は、knowledge の次の記事を参照:
   - `pico-sdk-windows-toolchain-sources`
   - `xiao-rp2040-pico-sdk-notes`
-- 開発規約: `rules/develop/c.md`(ライセンス、Doxygen コメント、Unity によるテスト、clang-format)
+- 開発規約: `rules/develop/c.md` + `rules/develop/c-pico-sdk.md`(後者が CMake + Pico SDK 向けの追加・上書き。Doxygen を .c の static にも付ける方針などはこちら)
 
 ## ビルド・書き込み
 
