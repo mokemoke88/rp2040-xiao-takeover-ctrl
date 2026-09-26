@@ -48,6 +48,37 @@ XIAO RP2040 で 2つのタクトスイッチ(LB / RB)を読み、制御の乗っ
 
 ## 3. 状態遷移
 
+### 状態遷移図
+
+2 章の T は、実装では SEL 反転待ちの `SEL_DELAY` と、SEL 反転後の `LOCK` に分かれる。図では `LOCK` をさらに D0:D1 = L:L の間(`LOCK`)と H:H にした後(`LOCK_HH`)に分けて描いている(実装では LOCK 内のフラグ)。WARN のラッチ・解除、ボタンの無視(3.3 / 4.1)、同時に届いた変化の処理順(3.6)は図に含めていないので、各節を参照する。
+
+```mermaid
+stateDiagram-v2
+    [*] --> S0 : 電源投入 / リセット
+    S0 : SEL=L, D0:D1=L:L
+    S1 : SEL=H, D0:D1=L:L
+    S2 : SEL=H, D0:D1=H:H
+    P : SEL=H, D0:D1=L:H(LB) / H:L(RB)
+    SEL_DELAY : SEL=反転前, D0:D1=L:L, 入力ロック
+    LOCK : SEL=反転後, D0:D1=L:L, 入力ロック
+    LOCK_HH : SEL=H, D0:D1=H:H, 入力ロック
+
+    S0 --> SEL_DELAY : 両押しが T_TOGGLE 継続
+    S1 --> SEL_DELAY : 両押しが T_TOGGLE 継続
+    S2 --> SEL_DELAY : 両押しが T_TOGGLE 継続
+    SEL_DELAY --> LOCK : T_SEL_DELAY 経過 / SEL 反転
+    LOCK --> LOCK_HH : SEL=H かつ両押しが途切れず T_MANUAL 到達
+    LOCK --> S0 : 両解放(SEL=L)
+    LOCK --> S1 : 両解放(SEL=H)
+    LOCK_HH --> S2 : 両解放
+    S2 --> P : 優先入力を解放
+    P --> S2 : T_PULSE 経過
+```
+
+- `SEL_DELAY` に入るときに D0:D1 を L:L にし、`T_SEL_DELAY` 後に SEL を反転する(3.1)
+- `LOCK` から出る遷移と `LOCK_HH` への遷移は、SEL を反転したのと同じ時刻には起きない(3.1 の安全上の考え方)
+- S0 / S1 での単押しは遷移を起こさない(3.2)。S2 で後押しを先に離しても遷移しない
+
 ### 3.1 同時押しによるトグル(S0 / S1 / S2 から)
 
 1. LB と RB が両方押された時点から計時を始める(以下「同時押し開始」)
