@@ -34,7 +34,7 @@ int main(void) {
      目印が消されるので false になり、単なる watchdog_caused_reboot() と違って区別できる(SDK のソースで確認)。
      電源投入やリセットボタン(RUN ピン)による起動でも false になる。
      UF2 の書き込み後の再起動は SDK の watchdog_reboot() ではなくブート ROM が行う。SDK のドキュメントは
-     この場合も false になると書いているが、ブート ROM の挙動はこのワークスペースでは未検証 */
+     この場合も false になると書いているが、ブート ROM の挙動は未検証 */
   const bool rebooted_by_watchdog = watchdog_enable_caused_reboot();
 
   /* ウォッチドッグによる再起動なら WARN(赤)を点けた状態で始める(docs/spec.md 6.1) */

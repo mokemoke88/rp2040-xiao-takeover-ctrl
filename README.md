@@ -1,58 +1,51 @@
 # xiao-takeover-ctrl
 
-XIAO RP2040 用のファームウェア。2つのタクトスイッチ(LB / RB)の操作で、制御の乗っ取り(SEL)とレンジ指令(D0:D1)を出力する。
+Seeed Studio XIAO RP2040 用のファームウェア。2 つのタクトスイッチ(LB / RB)の操作で、制御の乗っ取り(SEL)とレンジ指令(D0:D1)を出力する。
 
-## 参照元アイデア
+## 動作の要点
 
-- なし(会話での相談から直接ワークスペース化)
+詳細(状態遷移図、タイミング、WARN、ウォッチドッグ)は [docs/spec.md](docs/spec.md) が正。
 
-## ドキュメント
+- **両押しを 2 秒**続けると、D0:D1 を L:L(ドライブレンジ)にしてから SEL を反転する(乗っ取り ⇔ 解除)。乗っ取り側へのトグルで両押しを **4 秒**まで続けると、D0:D1 = H:H(マニュアル待機)になる
+- マニュアル待機中は、**先に押したボタンを離した時点**で 200 ms のパルスを出す(LB: D0:D1 = L:H、RB: H:L)
+- パルス出力中の操作など想定外の入力は、オンボード LED の赤(WARN)をラッチして知らせる
+- 入力のチャタリングは PIO で除去する(約 21〜22 ms)。ウォッチドッグ(100 ms)と、panic 時に出力を安全側に倒す処理を持つ
 
-- [docs/spec.md](docs/spec.md) — 仕様(ピン割り当て、状態遷移、タイミング、ウォッチドッグ)
-- [tests/CASES.md](tests/CASES.md) — 状態遷移ロジックの単体テストの入力と期待値、仕様に明記がなく実装で決めた解釈
-
-## 対象と開発環境
-
-- ボード: Seeed Studio XIAO RP2040
-- SDK: Pico SDK 2.3.1(C/C++)
-- CMake では `-DPICO_BOARD=seeed_xiao_rp2040` を必ず指定する(`CMakeLists.txt` は未指定時にこれを既定にしている)
-- ツールチェーンの入手先とボード固有の注意点は、knowledge の次の記事を参照:
-  - `pico-sdk-windows-toolchain-sources`
-  - `xiao-rp2040-pico-sdk-notes`
-- 開発規約: `rules/develop/c.md` + `rules/develop/c-pico-sdk.md`(後者が CMake + Pico SDK 向けの追加・上書き。Doxygen を .c の static にも付ける方針などはこちら)
-
-## ビルド・書き込み
-
-### 必要なもの
-
-- ファームウェア: `PICO_SDK_PATH`(Pico SDK 2.3.1)、Arm GNU Toolchain(`arm-none-eabi-gcc`)、CMake、Ninja。picotool / pioasm はビルド済みのものを `picotool_DIR` / `pioasm_DIR` で指定しておく
-- ホスト側のテスト・整形: `gcc`、`make`(Windows では w64devkit で確認)、`clang-format`
-- PIO の検算スクリプト: Python 3
-
-### コマンド
-
-すべてワークスペース直下で実行する。
-
-| コマンド | 内容 |
+| D0:D1 | 意味 |
 |---|---|
-| `make format` | clang-format で整形 |
-| `make lint` | 整形済みか検査(差分があれば失敗) |
-| `make test` | 状態遷移ロジック(`src/takeover_logic.c`)をホストの gcc でビルドし、Unity のテストを実行。次の 3 構成でビルドしてすべて実行する: 仕様どおり(同着時 LB 優先)、RB 優先(`-DTAKEOVER_TIE_PREFER_LB=0`)、タイミング定数を仕様値と違う値にした構成(`ALT_TIMING`)。テストの時刻は `takeover_config.h` の定数から計算しているので、定数を調整してもテストを書き直す必要はない。成果物は `build-host/` |
-| `make firmware` | `cmake -S . -B build -G Ninja -DPICO_BOARD=seeed_xiao_rp2040` + `cmake --build build`。`build/xiao_takeover_ctrl.uf2` ができる |
-| `make firmware BUILD_DIR=build-nowdt CMAKE_ARGS=-DTAKEOVER_ENABLE_WATCHDOG=OFF` | ウォッチドッグ無効版を別ディレクトリにビルド |
-| `python tools/verification/verify_debounce_pio.py build/debounce.pio.h` | `make firmware` で生成された PIO の命令語を模擬実行し、チャタリング除去の時間、ノイズ除去、起動時の最初の push を検算。期待値は生成ヘッダの `debounce_CLOCK_HZ` / `debounce_REREAD_DELAY` から計算する |
+| L:L | マニュアル以外 = ドライブレンジ |
+| H:H | マニュアルモード待機 |
+| L:H | LB パルス(200 ms) |
+| H:L | RB パルス(200 ms) |
 
-コードを変更したら `make format` → `make lint` → `make test` を1つずつ実行し、警告なし・全 PASS を確認する。ファームウェア側を変えた場合は `make firmware` も警告なしで通ること。
+## ハードウェアとピン
 
-### ビルドオプション
+| 信号 | 向き | XIAO ピン | GPIO |
+|---|---|---|---|
+| D0 | 出力 | D0 | 26 |
+| D1 | 出力 | D1 | 27 |
+| SEL | 出力(H = 乗っ取り中) | D2 | 28 |
+| WARN | オンボード RGB LED の赤 | — | 17 |
+| LB | 入力(外部プルアップ 10 kΩ、押下で L) | D9 | 4 |
+| RB | 入力(同上) | D10 | 3 |
 
-| CMake オプション | 既定 | 内容 |
-|---|---|---|
-| `TAKEOVER_ENABLE_WATCHDOG` | ON | ウォッチドッグ(タイムアウト 100 ms、デバッガ停止中は一時停止)を有効にする。無効にすると panic 後は停止したままになる |
+プルアップは 3V3 に接続する(RP2040 の I/O は 5V 耐性なし)。出力は 3.3V ロジックで、相手側と GND を共通にする。詳細は [docs/spec.md](docs/spec.md) の「1. 信号とピン割り当て」。
 
-ピン番号・タイミング定数・同着時の優先は `include/takeover_config.h`、チャタリング除去の時間は `src/debounce.pio` の冒頭コメントと定数で決まる。タイミング定数の間の前提(例: `T_MANUAL > T_TOGGLE + T_SEL_DELAY`)は `takeover_config.h` でコンパイル時に検査しているので、前提に反する値にするとビルドが失敗する。
+## 必要なもの
 
-### 書き込み
+- ファームウェア: Pico SDK 2.3.1(`PICO_SDK_PATH`)、Arm GNU Toolchain(`arm-none-eabi-gcc`)、CMake、Ninja。picotool / pioasm はビルド済みのものを `picotool_DIR` / `pioasm_DIR` で指定しておく
+- ホスト側のテスト・整形: `gcc`、`make`(Windows では w64devkit で確認)、`clang-format`
+- PIO の検算スクリプト: Python 3(標準ライブラリのみ)
+
+## ビルドと書き込み
+
+コマンドはすべてリポジトリ直下で実行する。
+
+```
+make firmware
+```
+
+`cmake -S . -B build -G Ninja -DPICO_BOARD=seeed_xiao_rp2040` と `cmake --build build` を実行し、`build/xiao_takeover_ctrl.uf2` ができる(`CMakeLists.txt` は `PICO_BOARD` 未指定時に `seeed_xiao_rp2040` を既定にしている)。
 
 1. XIAO の B(BOOT)ボタンを押しながら USB で PC に接続する(または接続中に B を押したまま R を押して離す)
 2. `RPI-RP2` ドライブが現れるので、`build/xiao_takeover_ctrl.uf2` をコピーする
@@ -60,61 +53,35 @@ XIAO RP2040 用のファームウェア。2つのタクトスイッチ(LB / RB)�
 
 picotool を使う場合は、BOOTSEL 状態で `picotool load -x build/xiao_takeover_ctrl.uf2` でもよい。
 
-### 実機で確認すること
+### ビルドオプション
 
-確認済みと書いているのは、ユーザーから報告があった範囲だけ。ほかの項目は実施状況を記録していない。
+| CMake オプション | 既定 | 内容 |
+|---|---|---|
+| `TAKEOVER_ENABLE_WATCHDOG` | ON | ウォッチドッグ(タイムアウト 100 ms、デバッガ停止中は一時停止)を有効にする。無効にすると panic 後は停止したままになる |
 
-- 乗っ取り側へのトグルで両押しを続け、同時押し開始から 4 秒に達した時点で、解放を待たずに D0:D1 が H:H になること(その後、両方離すと S2)
-  - 確認済み(2026-09-26、ユーザー報告: 正常系が想定どおり)
-- 仕様の各操作で SEL / D0 / D1 が期待どおりか(テスター / ロジックアナライザ)
-- パルス幅が 200 ms を超えること(〜約 201 ms)、D0:D1 → SEL の遅延が 10 ms を超えること(`T_SEL_DELAY` は暫定値)
-- チャタリング除去の効き(除去時間は計算上 約 21〜22 ms)
-- 起動時に押していたボタンが、離すまで無視されること
-- WARN(赤 LED)の点灯と解除、青 LED が消灯していること
-- 緑 LED: 起動後に点灯すること。ウォッチドッグによる再起動後は赤が点いた状態で始まり、緑も点くこと(再起動の起こし方は要検討。例: デバッガでコアを止める場合は `pause_on_debug` のためウォッチドッグも止まる)
+ウォッチドッグ無効版を別ディレクトリにビルドする例: `make firmware BUILD_DIR=build-nowdt CMAKE_ARGS=-DTAKEOVER_ENABLE_WATCHDOG=OFF`
 
-## ファイル構成
+ピン番号・タイミング定数・同着時の優先は `include/takeover_config.h`、チャタリング除去の時間は `src/debounce.pio` の冒頭コメントと定数で決まる。タイミング定数の間の前提(例: `T_MANUAL > T_TOGGLE + T_SEL_DELAY`)は `takeover_config.h` でコンパイル時に検査しているので、前提に反する値にするとビルドが失敗する。
 
-```
-CMakeLists.txt            ファームウェアのビルド定義(PICO_BOARD 既定 seeed_xiao_rp2040、TAKEOVER_ENABLE_WATCHDOG)
-pico_sdk_import.cmake     Pico SDK 同梱のものをコピー($PICO_SDK_PATH/external/)
-Makefile                  make test / format / lint(ホスト)、make firmware(CMake 呼び出し)
-.clangd                   clangd がファームウェアのコンパイル DB(build/)を使う設定
-LICENSE                   MIT
-include/
-  takeover_config.h       ピン番号、タイミング定数、同着時の優先、ウォッチドッグ設定
-  takeover_logic.h        状態遷移ロジックの API(SDK 非依存)
-  button_input.h          PIO によるチャタリング除去の初期化と読み出し
-  outputs.h               SEL / D0 / D1 / LED の出力
-  panic_hook.h            panic の置き換え(出力を安全側に倒し、緑 LED を消して停止)
-src/
-  main.c                  初期化とメインループ(FIFO 読み出し → 時間処理 → 出力 → ウォッチドッグ更新)
-  takeover_logic.c        状態遷移ロジック(stdint.h / stdbool.h だけに依存。ホストでテストする)
-  button_input.c          PIO0 の SM を1つ設定し、RX FIFO をポーリング
-  debounce.pio            安定待ち方式のチャタリング除去(29 命令)
-  outputs.c               gpio_put_masked による同時出力、緑 LED、panic 時の安全側出力
-  panic_hook.c            takeover_panic()
-tests/
-  test_takeover_logic.c   Unity による単体テスト
-  CASES.md                テストの入力と期待値の対応表
-tools/verification/
-  verify_debounce_pio.py  PIO プログラムの模擬実行による検算
-third_party/unity/        Unity(MIT)
-```
+## 開発
 
-### エディタ(clangd)
+| コマンド | 内容 |
+|---|---|
+| `make format` | clang-format で整形 |
+| `make lint` | 整形済みか検査(差分があれば失敗) |
+| `make test` | 状態遷移ロジック(`src/takeover_logic.c`)をホストの gcc でビルドし、Unity のテストを実行。次の 3 構成でビルドしてすべて実行する: 仕様どおり(同着時 LB 優先)、RB 優先(`-DTAKEOVER_TIE_PREFER_LB=0`)、タイミング定数を仕様値と違う値にした構成(`ALT_TIMING`)。テストの時刻は `takeover_config.h` の定数から計算しているので、定数を調整してもテストを書き直す必要はない。成果物は `build-host/` |
+| `make firmware` | ファームウェアのビルド(上記) |
+| `python tools/verification/verify_debounce_pio.py build/debounce.pio.h` | `make firmware` で生成された PIO の命令語を模擬実行し、チャタリング除去の時間、ノイズ除去、起動時の最初の push を検算。期待値は生成ヘッダの `debounce_CLOCK_HZ` / `debounce_REREAD_DELAY` から計算する |
 
-ワークスペース直下の `.clangd` が `build/compile_commands.json`(`make firmware` で生成)を参照する。arm-none-eabi-gcc の標準ヘッダを clangd に見つけさせるには、エディタ側で clangd の起動引数に `--query-driver=<arm-none-eabi-gcc のパス>*` を追加する(例: VSCode の `clangd.arguments`)。`tests/` はコンパイル DB に含まれないため、`.clangd` で Unity のインクルードパスを足している。
+コードを変更したら `make format` → `make lint` → `make test` を 1 つずつ実行し、警告なし・全 PASS を確認する。ファームウェア側を変えた場合は `make firmware` も警告なしで通ること。
 
-## 設計メモ
+## ドキュメント
 
-- `takeover_logic` は時刻(ミリ秒の `uint32_t`)を引数で受け取る純粋な状態機械で、Pico SDK を include しない。経過時間は差分で判定するので、約 49.7 日ごとの時刻の折り返しでも動く
-- 「2 秒に達したら」「4 秒に達したら」は、どちらも「経過 ≥ 定数」で判定する
-- 乗っ取り側へのトグルで同時押しを途切れずに 4 秒続けると、T(LOCK)のまま解放を待たずに D0:D1 = H:H にする(両解放で S2)。SEL を反転した時刻と同じ時刻には H:H にしない(spec 3.1)
-- トグル時の `T_SEL_DELAY` 待ちは非ブロッキング(`SEL_DELAY` 状態として `takeover_tick()` で処理)。待ちの間も入力はロックされる
-- チャタリング除去の設計(レジスタの使い方、除去時間の計算、2ピン同時監視の性質)は `src/debounce.pio` の冒頭コメントを参照
-- 起動後の PIO の最初の push は必ず起動時の状態になる(確定値 X の初期値を 4 にしている)。ロジックは初期化後の最初の入力を起動時の状態として扱い、押されていたボタンは離されるまで無視する
-- `T_PULSE` / `T_SEL_DELAY` は「経過 > 定数」で判定する。メインループ各周の先頭で読んだ時刻(サンプリング時刻)の差が定数を超えることを保証する。ピンが変わるのは各周の出力処理の時点なので、実際の間隔はループ処理時間の差(µs 程度)だけずれうる
-- SEL を反転した時刻と同じ時刻には、T(LOCK)中に D0:D1 を H:H にすることも、T を抜けることもしない。SEL の変化と D0:D1 = H:H が1回の出力で同時に出ないようにするため(`after_sel_flip()`)
-- panic は `PICO_PANIC_FUNCTION` で `src/panic_hook.c` の `takeover_panic()` に置き換えている。外部出力を安全側に倒し(D0:D1 = L:L → `T_SEL_DELAY` 以上待つ → SEL = L)、緑 LED を消して停止する(仕組みは `include/panic_hook.h`、流れは spec 6.2)
-- SEL の反転と D0:D1 の変化は別の出力書き込みになるようにしているが、SEL 反転後に L:L を保つ時間の下限は設けていない(SEL の先は半導体スイッチ。spec 3.1)
+- [docs/spec.md](docs/spec.md) — 仕様(ピン割り当て、状態遷移、タイミング、ウォッチドッグ)
+- [docs/design-notes.md](docs/design-notes.md) — 設計メモ(実装の判断、ファイル構成、エディタの設定)
+- [docs/verification.md](docs/verification.md) — 実機での確認項目と結果
+- [tests/CASES.md](tests/CASES.md) — 状態遷移ロジックの単体テストの入力と期待値、仕様に明記がなく実装で決めた解釈
+
+## ライセンス
+
+[MIT](LICENSE)。`third_party/unity/`(Unity)は MIT([LICENSE.txt](third_party/unity/LICENSE.txt))。
